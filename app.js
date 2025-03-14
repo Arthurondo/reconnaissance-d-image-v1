@@ -10,7 +10,7 @@ const saveBtn = document.getElementById("save-coordinates");
 
 let stream = null;
 let detecting = false;
-let lastPredictions = [];
+let objectTrackingData = [];
 
 // Charger le modèle
 async function loadModel() {
@@ -68,54 +68,15 @@ function disableButtons() {
     saveBtn.disabled = true;
 }
 
-// Fonction pour capturer une photo avec les objets détectés
-function capturePhoto(predictions) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    predictions.forEach(pred => {
-        const [x, y, width, height] = pred.bbox;
-
-        // Dessiner le contour
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(x, y, width, height);
-
-        // Ajouter l'étiquette et les coordonnées
-        ctx.fillStyle = "red";
-        ctx.font = "16px Arial";
-        const text = `${pred.class} (${Math.round(x)}, ${Math.round(y)})`;
-        ctx.fillRect(x, y - 20, ctx.measureText(text).width + 10, 20);
-        ctx.fillStyle = "white";
-        ctx.fillText(text, x + 5, y - 5);
-    });
-
-    // Télécharger l'image annotée
-    const image = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = image;
-    link.download = "objet_detecte.png";
-    link.click();
-}
-
-// Fonction pour sauvegarder les coordonnées en JSON
+// Fonction pour sauvegarder les coordonnées successives des objets
 function saveCoordinates() {
-    if (lastPredictions.length === 0) return;
+    if (objectTrackingData.length === 0) return;
 
-    const data = lastPredictions.map(pred => ({
-        objet: pred.class,
-        x: Math.round(pred.bbox[0]),
-        y: Math.round(pred.bbox[1]),
-        largeur: Math.round(pred.bbox[2]),
-        hauteur: Math.round(pred.bbox[3])
-    }));
-
-    const json = JSON.stringify(data, null, 2);
+    const json = JSON.stringify(objectTrackingData, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "coordonnees.json";
+    link.download = "object_tracking.json";
     link.click();
 }
 
@@ -124,14 +85,14 @@ async function detectObjects() {
     if (!model || !detecting) return;
 
     requestAnimationFrame(detectObjects);
-    lastPredictions = await model.detect(video);
+    const predictions = await model.detect(video);
     
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    lastPredictions.forEach(pred => {
+    predictions.forEach(pred => {
         const [x, y, width, height] = pred.bbox;
 
         // Dessiner le rectangle autour de l'objet
@@ -146,9 +107,19 @@ async function detectObjects() {
         ctx.fillRect(x, y - 20, ctx.measureText(text).width + 10, 20);
         ctx.fillStyle = "white";
         ctx.fillText(text, x + 5, y - 5);
+
+        // Enregistrer les coordonnées de tous les objets détectés
+        objectTrackingData.push({
+            timestamp: new Date().toISOString(),
+            objet: pred.class,
+            x: Math.round(x),
+            y: Math.round(y),
+            largeur: Math.round(width),
+            hauteur: Math.round(height)
+        });
     });
 
-    statusText.textContent = `Objets détectés : ${lastPredictions.length}`;
+    statusText.textContent = `Objets détectés : ${predictions.length}`;
 
     // Activer la sauvegarde des coordonnées après détection
     saveBtn.disabled = false;
